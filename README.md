@@ -40,3 +40,5 @@ Insert the USBtinyISP again.
 * [[quick-guide] CAN bus on raspberry pi with MCP2515](https://www.raspberrypi.org/forums/viewtopic.php?t=141052)
 * [CAN2Ethernet](http://lnxpps.de/rpie/)
 * [How to Connect Raspberry Pi to CAN Bus](https://www.hackster.io/youness/how-to-connect-raspberry-pi-to-can-bus-b60235)
+* [pyobd](https://github.com/peterh/pyobd)
+* [piobd](https://www.instructables.com/id/OBD-Pi/)
