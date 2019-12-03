@@ -42,3 +42,4 @@ Insert the USBtinyISP again.
 * [How to Connect Raspberry Pi to CAN Bus](https://www.hackster.io/youness/how-to-connect-raspberry-pi-to-can-bus-b60235)
 * [pyobd](https://github.com/peterh/pyobd)
 * [piobd](https://www.instructables.com/id/OBD-Pi/)
+* [!!!!! micropython CAN !!!!!!!!](https://github.com/zhangxuhong1024/wifi2can)
