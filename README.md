@@ -43,3 +43,6 @@ Insert the USBtinyISP again.
 * [pyobd](https://github.com/peterh/pyobd)
 * [piobd](https://www.instructables.com/id/OBD-Pi/)
 * [!!!!! micropython CAN !!!!!!!!](https://github.com/zhangxuhong1024/wifi2can)
+* [Short MCP CAN Arduino lib](https://github.com/autowp/arduino-mcp2515)
+* [MCP2515 instructions](https://www.nutsvolts.com/magazine/article/February2017_CAN-Bus-Add-Controller-to-MCU)
+* [Python Raspberry Pi SPI CAN](https://www.raspberrypi.org/forums/viewtopic.php?t=245788)
