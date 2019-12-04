@@ -2,59 +2,64 @@ import time
 from machine import Pin, SPI
 
 
-
 class CAN:
-    def __init__(self, cs: int = 27):
+    '''
+    Implements the standard CAN communication protocol.
+    '''
+
+    def __init__(self, cs: int = 27) -> None:
         '''
-        Function: MCP2515 chip initialization
+        MCP2515 chip initialization
+
+        SPI used by default is HSPI
+        id=1, baudrate=10000000, sck=14, mosi=13, miso=12
+
+        CS default is pin 27
         '''
-        # self.spi = SPI(id=1, baudrate=10000000, polarity=0, phase=0, bits=8, firstbit=0, sck=14, mosi=13, miso=12)
-        # self.spi = SPI(1, baudrate=10000000, polarity=0, phase=0)
         self.spi = SPI(1, 10000000, sck=Pin(14), mosi=Pin(13), miso=Pin(12))
         self.spi.init()
-        # self.spi = spi
 
         self.cs = Pin(cs, Pin.OUT, value=1)
-        # self.cs.init (self.cs.OUT, value = 1)
 
-        self._RxBuf = []
-
-        # try:
-        # master = self.spi.MASTER
-        # except AttributeError:
-        # # on ESP8266
-        # else:
-        # # on pyboard
-        # self.spi.init (master, baudrate = 8000000, phase = 0, polarity = 0)
+        self._rx_buf = []
 
         # Software reset
-        self._spi_Reset()
-        # If you can read the data, it is considered that the initialization is OK. At least the chip is soldered.
+        self._spi_reset()
+
+        # If you can read the data, it is considered that the initialization
+        # is OK. At least the chip is soldered.
         time.sleep(0.2)
-        mode = self._spi_ReadReg(b'\x0e')
+        mode = self._spi_read_reg(b'\x0e')
         if (mode == 0):
-            raise OSError("MCP2515 init fail.")
+            raise OSError("MCP2515 init failed (Cannot read any data).")
 
-    def Stop(self):
-        # Function: Stop MCP2515
-        self._spi_WriteBit(b'\x0f', b'\xe0', b'\x20')  # sleep mode
+    def stop(self) -> None:
+        '''
+        Stops MCP2515
+        '''
+        self._spi_write_bit(b'\x0f', b'\xe0', b'\x20')  # sleep mode
 
-    def Start(self, SpeedCfg=500, Filter=None, ListenOnly=False):
-        # Function: Start MCP2515
-        # SpeedCfg: CAN communication speed
-        # The supported communication speeds are as follows:
-        # 5K, 10K, 20K, 33K, 40K, 50K, 80K, 95K, 100K, 125K, 200K, 250K, 500K, 1000K
-        # The valid parameters are:
-        # 5, 10, 20, 33, 40, 50, 80, 95, 100, 125, 200, 250, 500, 1000
-        # Filter: Filter mode for received packets
-        # To be optimized.
-        # ListenOnly: whether to specify the listening mode
+    def start(self,
+              speed_cfg: int = 500,
+              filter=None,
+              listen_only: bool = False) -> None:
+        '''
+        Starts MCP2515
 
+        speed_cfg: CAN communication speed in Kb/s
+        The supported communication speeds are as follows:
+        5, 10, 20, 33, 40, 50, 80, 95, 100, 125, 200, 250, 500, 1000
+
+        filter: filter mode for received packets
+        TODO
+
+        listen_only: whether to specify the listening mode
+        '''
         # Set to configuration mode
-        self._spi_Reset()
-        self._spi_WriteBit(b'\x0f', b'\xe0', b'\x80')
+        self._spi_reset()
+        self._spi_write_bit(b'\x0f', b'\xe0', b'\x80')
         # Set communication rate
-        SpeedCfg_at_16M = {
+        speed_cfg_at_16M = {
             1000: b'\x82\xD0\x00',
             500: b'\x86\xF0\x00',
             250: b'\x85\xF1\x41',
@@ -69,92 +74,103 @@ class CAN:
             20: b'\x87\xFF\x0F',
             10: b'\x87\xFF\x1F',
             5: b'\x87\xFF\x3F'}
-        cfg = SpeedCfg_at_16M.get(SpeedCfg, (b'\x00\x00\x00'))
-        self._spi_WriteReg(b'\x28', cfg)
-        del SpeedCfg_at_16M
+        cfg = speed_cfg_at_16M.get(speed_cfg, (b'\x00\x00\x00'))
+        self._spi_write_reg(b'\x28', cfg)
+        del speed_cfg_at_16M
         # Channel 1 packet filtering settings
-        if (Filter == None):
-            self._spi_WriteBit(b'\x60', b'\x64', b'\x64')
+        if (filter == None):
+            self._spi_write_bit(b'\x60', b'\x64', b'\x64')
         else:
-            self._spi_WriteBit(b'\x60', b'\x64', b'\x04')
-            self._spi_WriteReg(b'\x00', Filter.get('F0'))
-            self._spi_WriteReg(b'\x04', Filter.get('F1'))
-            self._spi_WriteReg(b'\x20', Filter.get('M0'))
+            self._spi_write_bit(b'\x60', b'\x64', b'\x04')
+            self._spi_write_reg(b'\x00', filter.get('F0'))
+            self._spi_write_reg(b'\x04', filter.get('F1'))
+            self._spi_write_reg(b'\x20', filter.get('M0'))
         # Disable channel 2 message reception
-        self._spi_WriteBit(b'\x70', b'\x60', b'\x00')
-        self._spi_WriteReg(b'\x08', b'\xff\xff\xff\xff')
-        self._spi_WriteReg(b'\x10', b'\xff\xff\xff\xff')
-        self._spi_WriteReg(b'\x14', b'\xff\xff\xff\xff')
-        self._spi_WriteReg(b'\x18', b'\xff\xff\xff\xff')
-        self._spi_WriteReg(b'\x24', b'\xff\xff\xff\xff')
+        self._spi_write_bit(b'\x70', b'\x60', b'\x00')
+        self._spi_write_reg(b'\x08', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x10', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x14', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x18', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x24', b'\xff\xff\xff\xff')
         # Set to normal mode or listening mode
-        mode = b'\x00' if (ListenOnly == False) else b'\x60'
-        self._spi_WriteBit(b'\x0f', b'\xe0', mode)
+        mode = b'\x00' if (listen_only == False) else b'\x60'
+        self._spi_write_bit(b'\x0f', b'\xe0', mode)
 
-    def Send_msg(self, msg, sendchangel=None):
-        # Function: Send a message.
-        # msg:
-        # msg ['id']: ID of the message to be sent
-        # msg ['ext']: Whether the message to be sent is an extended frame
-        # msg ['data']: Data of the message to be sent
-        # msg ['dlc']: Length of the message to be sent
-        # msg ['rtr']: Whether the message to be sent is a remote frame
-        # sendchangel:
-        # Specify the channel for sending packets. The valid values ​​are as follows:
-        # 0: channel 0
-        # 1: Channel 1
-        # 2: Channel 2
-        # MCP2515 provides three sending channels. By default, channel 0 is used. Later, we will automatically find free channels, so stay tuned.
-        # Note: If there are pending messages in the channel, the previous message transmission will be stopped.
-        # Then replace it with a new message and enter the pending state again.
-        if sendchangel == None:
-            sendchangel = 0
-        self._MsgVerificationCheck(msg)  # msg check.
-        # Stop message transmission in previous register
-        ctl = (((sendchangel % 3) + 3) << 4) .to_bytes(1, 'big')
-        self._spi_WriteBit(ctl, b'\x08', b'\x00')
+    def send_msg(self, msg: dict, send_chanel: int = None) -> None:
+        '''
+        Send a message.
+
+        msg:
+        msg ['id']: ID of the message to be sent
+        msg ['ext']: Whether the message to be sent is an extended frame
+        msg ['data']: Data of the message to be sent
+        msg ['dlc']: Length of the message to be sent
+        msg ['rtr']: Whether the message to be sent is a remote frame
+
+        send_chanel:
+        Specify the channel for sending packets. The valid values ​​are
+        as follows:
+        0: channel 0
+        1: Channel 1
+        2: Channel 2
+        MCP2515 provides three sending channels. By default, channel 0 is used.
+        TODO: automatically find free channels.
+        NOTE: If there are pending messages in the channel, the previous
+        message transmission will be stopped.
+        Then replace it with a new message and enter the pending state again.
+        '''
+        if send_chanel == None:
+            send_chanel = 0
+        # stop message transmission in previous register
+        ctl = (((send_chanel % 3) + 3) << 4) .to_bytes(1, 'big')
+        self._spi_write_bit(ctl, b'\x08', b'\x00')
         # Data structure
-        self.TxBuf = bytearray(13)
+        self.tx_buf = bytearray(13)
         if msg.get('ext'):
-            self.TxBuf[0] = ((msg.get('id')) >> 21) & 0xFF
+            self.tx_buf[0] = ((msg.get('id')) >> 21) & 0xFF
             id_buf = ((msg.get('id')) >> 13) & 0xE0
             id_buf |= 0x08
             id_buf |= ((msg.get('id')) >> 16) & 0x03
-            self.TxBuf[1] = id_buf
-            self.TxBuf[2] = ((msg.get('id')) >> 8) & 0xFF
-            self.TxBuf[3] = (msg.get('id')) & 0xFF
+            self.tx_buf[1] = id_buf
+            self.tx_buf[2] = ((msg.get('id')) >> 8) & 0xFF
+            self.tx_buf[3] = (msg.get('id')) & 0xFF
             if msg.get('rtr'):
-                self.TxBuf[4] |= 0x40
+                self.tx_buf[4] |= 0x40
         else:
-            self.TxBuf[0] = ((msg.get('id')) >> 3) & 0xFF
-            self.TxBuf[1] = ((msg.get('id')) << 5) & 0xE0
+            self.tx_buf[0] = ((msg.get('id')) >> 3) & 0xFF
+            self.tx_buf[1] = ((msg.get('id')) << 5) & 0xE0
             if msg.get('rtr'):
-                self.TxBuf[1] |= 0x10
+                self.tx_buf[1] |= 0x10
         if msg.get('rtr') == False:
-            self.TxBuf[4] |= msg.get('dlc') & 0x0F
-            self.TxBuf[5:13] = msg.get('data')[: msg.get('dlc')]
+            self.tx_buf[4] |= msg.get('dlc') & 0x0F
+            self.tx_buf[5:13] = msg.get('data')[: msg.get('dlc')]
         # Data loading
-        dat = ((((sendchangel % 3) + 3) << 4) + 1) .to_bytes(1, 'big')
-        self._spi_WriteReg(dat, self.TxBuf)
+        dat = ((((send_chanel % 3) + 3) << 4) + 1) .to_bytes(1, 'big')
+        self._spi_write_reg(dat, self.tx_buf)
         # Send
-        # self._spi_WriteBit (ctl, b'\x08', b'\x08')
-        self._spi_SendMsg(1 << sendchangel)
+        # self._spi_write_bit (ctl, b'\x08', b'\x08')
+        self._spi_send_msg(1 << send_chanel)
 
-    def Recv_msg(self):
-        # Function: Query whether the MCP2515 has received a message. If so, deposit it in Buf. CheckRx is called.
-        # Query whether Buf has packets. If yes, return the earliest received frame, otherwise return None.
-        # Return Msg description:
-        # msg ['tm']: Time to receive the message. Timer started at power on. Unit = 1ms.
-        # msg ['id']: ID of the received message
-        # msg ['ext']: Whether the received message is an extended frame
-        # msg ['data']: Received message data
-        # msg ['dlc']: Length of received message
-        # msg ['rtr']: Whether the received message is a remote frame
-        # Note: Only one frame is returned at a time, one frame!
-        self.CheckRx()
-        if len(self._RxBuf) == 0:
+    def recv_msg(self) -> dict:
+        '''
+        Requests whether the MCP2515 has received a message. If so, read it
+        in buffer. check_rx is called.
+        Requests whether the buffer has packets. If yes, return the earliest
+        received frame, otherwise return None.
+
+        Return Msg description:
+        msg ['tm']: Time to receive the message [ms]. Timer starts on power on.
+        msg ['id']: ID of the received message
+        msg ['ext']: Whether the received message is an extended frame
+        msg ['data']: Received message data
+        msg ['dlc']: Length of received message
+        msg ['rtr']: Whether the received message is a remote frame
+        NOTE: Only one frame is returned at a time.
+        '''
+        self.check_rx()
+        if len(self._rx_buf) == 0:
             return None
-        dat = self._RxBuf.pop(0)
+        dat = self._rx_buf.pop(0)
         msg = {}
         msg['tm'] = int.from_bytes(dat[-8:], 'big')
         msg['dlc'] = int.from_bytes(dat[4: 5], 'big') & 0x0F
@@ -175,15 +191,15 @@ class CAN:
                 dat[1: 2], 'big') & 0x10) else False
         return msg
 
-    def Get_smpl(self, print = True):
-        # Function: Query whether the MCP2515 has received a message. If so, deposit it in Buf. CheckRx is called.
+    def get_smpl(self, printable=True):
+        # Query whether the MCP2515 has received a message. If so, deposit it in Buf. check_rx is called.
         # Query whether Buf has packets. If yes, return the earliest received frame, otherwise return None.
         # Return Msg description:
-        self.CheckRx()
-        if len(self._RxBuf) == 0:
+        self.check_rx()
+        if len(self._rx_buf) == 0:
             return None
-        dat = self._RxBuf.pop(0)
-        msg ={}
+        dat = self._rx_buf.pop(0)
+        msg = {}
 
         msg['dlc'] = int.from_bytes(dat[4: 5], 'big') & 0x0F
         msg['data'] = dat[5:13]
@@ -194,8 +210,8 @@ class CAN:
         else:
             return msg
 
-    def CheckRx(self):
-        # Function: Query whether the MCP2515 has received a message. If so, store it in Buf and return TRUE, otherwise return False.
+    def check_rx(self):
+        # Query whether the MCP2515 has received a message. If so, store it in Buf and return TRUE, otherwise return False.
         # Note: Failure to store the messages in the MCP into Buf in time may result in the MCP being unable to receive new messages.
         # In other words, packets may be lost.
         # So, try to call this function as much as possible ~~
@@ -203,29 +219,29 @@ class CAN:
         if (rx_flag & 0x01):
             dat = self._spi_RecvMsg(0)
             tm = (time.ticks_ms()). to_bytes(8, 'big')
-            self._RxBuf.append(dat + tm)
+            self._rx_buf.append(dat + tm)
         if (rx_flag & 0x02):
             dat = self._spi_RecvMsg(1)
             tm = (time.ticks_ms()). to_bytes(8, 'big')
-            self._RxBuf.append(dat + tm)
+            self._rx_buf.append(dat + tm)
         return True if (rx_flag & 0b11000000) else False
 
-    def _spi_Reset(self):
-        # Function: MCP2515_SPI instruction-reset
+    def _spi_reset(self):
+        # MCP2515_SPI instruction-reset
         self.cs.off()
         self.spi.write(b'\xc0')
         self.cs.on()
 
-    def _spi_WriteReg(self, addr, value):
-        # Function: MCP2515_SPI instruction-write register
+    def _spi_write_reg(self, addr, value):
+        # MCP2515_SPI instruction-write register
         self.cs.off()
         self.spi.write(b'\x02')
         self.spi.write(addr)
         self.spi.write(value)
         self.cs.on()
 
-    def _spi_ReadReg(self, addr, num=1):
-        # Function: MCP2515_SPI instruction-read register
+    def _spi_read_reg(self, addr, num=1):
+        # MCP2515_SPI instruction-read register
         self.cs.off()
         self.spi.write(b'\x03')
         self.spi.write(addr)
@@ -233,8 +249,8 @@ class CAN:
         self.cs.on()
         return buf
 
-    def _spi_WriteBit(self, addr, mask, value):
-        # Function: MCP2515_SPI instruction-bit modification
+    def _spi_write_bit(self, addr, mask, value):
+        # MCP2515_SPI instruction-bit modification
         self.cs.off()
         self.spi.write(b'\x05')
         self.spi.write(addr)
@@ -243,7 +259,7 @@ class CAN:
         self.cs.on()
 
     def _spi_ReadStatus(self):
-        # Function: MCP2515_SPI instruction-read status
+        # MCP2515_SPI instruction-read status
         self.cs.off()
         self.spi.write(b'\xa0')
         buf = self.spi.read(1)
@@ -251,7 +267,7 @@ class CAN:
         return buf
 
     def _spi_RecvMsg(self, select):
-        # Function: MCP2515_SPI instruction-read Rx buffer
+        # MCP2515_SPI instruction-read Rx buffer
         self.cs.off()
         if select == 0:
             self.spi.write(b'\x90')
@@ -262,8 +278,8 @@ class CAN:
         self.cs.on()
         return buf
 
-    def _spi_SendMsg(self, select):
-        # Function: MCP2515_SPI instruction-Request to send a message
+    def _spi_send_msg(self, select):
+        # MCP2515_SPI instruction-Request to send a message
         self.cs.off()
         self.spi.write((0x80 + (select & 0x07)). to_bytes(1, 'big'))
         self.cs.on()
