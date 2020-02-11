@@ -33,14 +33,17 @@ class CAN:
         if (mode == 0):
             raise OSError("MCP2515 init failed (Cannot read any data).")
 
+
     def stop(self) -> None:
         '''
         Stops MCP2515
         '''
         self._spi_write_bit(b'\x0f', b'\xe0', b'\x20')  # sleep mode
 
+
     def start(self,
               speed_cfg: int = 500,
+              crystal: bool = True,
               filter=None,
               listen_only: bool = False) -> None:
         '''
@@ -48,7 +51,13 @@ class CAN:
 
         speed_cfg: CAN communication speed in Kb/s
         The supported communication speeds are as follows:
+            - for 16MHz Crystal Oscillator
         5, 10, 20, 33, 40, 50, 80, 95, 100, 125, 200, 250, 500, 1000
+            - for Crystal defined
+        10, 20, 50, 100, 125, 250, 500, 1000
+
+        crystal: `True` if baudrate defined by crystal
+                 `False` if baudrate determined by 16MHz oscillator
 
         filter: filter mode for received packets
         TODO
@@ -58,7 +67,38 @@ class CAN:
         # Set to configuration mode
         self._spi_reset()
         self._spi_write_bit(b'\x0f', b'\xe0', b'\x80')
+
         # Set communication rate
+        self._set_speed(speed_cfg, crystal)
+
+        # Channel 1 packet filtering settings
+        if (filter == None):
+            self._spi_write_bit(b'\x60', b'\x64', b'\x64')
+        else:
+            self._spi_write_bit(b'\x60', b'\x64', b'\x04')
+            self._spi_write_reg(b'\x00', filter.get('F0'))
+            self._spi_write_reg(b'\x04', filter.get('F1'))
+            self._spi_write_reg(b'\x20', filter.get('M0'))
+
+        # Disable channel 2 message reception
+        self._spi_write_bit(b'\x70', b'\x60', b'\x00')
+        self._spi_write_reg(b'\x08', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x10', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x14', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x18', b'\xff\xff\xff\xff')
+        self._spi_write_reg(b'\x24', b'\xff\xff\xff\xff')
+
+        # Set to normal mode or listening mode
+        mode = b'\x60' if listen_only else b'\x00'
+        self._spi_write_bit(b'\x0f', b'\xe0', mode)
+
+
+    def _set_speed(self,
+                   speed_cfg: int,
+                   crystal: bool) -> None:
+        '''
+        Sets communication rate according to used oscillator.
+        '''
         speed_cfg_at_16M = {
             1000: b'\x82\xD0\x00',
             500: b'\x86\xF0\x00',
@@ -74,27 +114,27 @@ class CAN:
             20: b'\x87\xFF\x0F',
             10: b'\x87\xFF\x1F',
             5: b'\x87\xFF\x3F'}
-        cfg = speed_cfg_at_16M.get(speed_cfg, (b'\x00\x00\x00'))
-        self._spi_write_reg(b'\x28', cfg)
-        del speed_cfg_at_16M
-        # Channel 1 packet filtering settings
-        if (filter == None):
-            self._spi_write_bit(b'\x60', b'\x64', b'\x64')
+
+        speed_cfg_by_crystal = {
+            1000: b'\x82\xD0\x00',
+            500: b'\x05\xB8\x00',
+            250: b'\x05\xB8\x01',
+            125: b'\x05\xB8\x03',
+            100: b'\x05\xB8\x04',
+            50: b'\x05\xB8\x09',
+            20: b'\x05\xB8\x18',
+            10: b'\x05\xB8\x31'}
+
+        speed = speed_cfg_by_crystal if crystal else speed_cfg_at_16M
+        if speed_cfg in speed.keys():
+            cfg = speed.get(speed_cfg, (b'\x00\x00\x00'))
+            self._spi_write_reg(b'\x28', cfg)
         else:
-            self._spi_write_bit(b'\x60', b'\x64', b'\x04')
-            self._spi_write_reg(b'\x00', filter.get('F0'))
-            self._spi_write_reg(b'\x04', filter.get('F1'))
-            self._spi_write_reg(b'\x20', filter.get('M0'))
-        # Disable channel 2 message reception
-        self._spi_write_bit(b'\x70', b'\x60', b'\x00')
-        self._spi_write_reg(b'\x08', b'\xff\xff\xff\xff')
-        self._spi_write_reg(b'\x10', b'\xff\xff\xff\xff')
-        self._spi_write_reg(b'\x14', b'\xff\xff\xff\xff')
-        self._spi_write_reg(b'\x18', b'\xff\xff\xff\xff')
-        self._spi_write_reg(b'\x24', b'\xff\xff\xff\xff')
-        # Set to normal mode or listening mode
-        mode = b'\x00' if (listen_only == False) else b'\x60'
-        self._spi_write_bit(b'\x0f', b'\xe0', mode)
+            raise Exception('Unsupported speed ({}Kb/s) or oscillator settings\
+incorrect.'.format(speed_cfg))
+
+        del speed
+
 
     def send_msg(self, msg: dict, send_chanel: int = None) -> None:
         '''
@@ -151,6 +191,7 @@ class CAN:
         # self._spi_write_bit (ctl, b'\x08', b'\x08')
         self._spi_send_msg(1 << send_chanel)
 
+
     def recv_msg(self) -> dict:
         '''
         Requests whether the MCP2515 has received a message. If so, read it
@@ -191,6 +232,7 @@ class CAN:
                 dat[1: 2], 'big') & 0x10) else False
         return msg
 
+
     def get_smpl(self, printable=True):
         # Query whether the MCP2515 has received a message. If so, deposit it in Buf. check_rx is called.
         # Query whether Buf has packets. If yes, return the earliest received frame, otherwise return None.
@@ -210,6 +252,7 @@ class CAN:
         else:
             return msg
 
+
     def check_rx(self):
         # Query whether the MCP2515 has received a message. If so, store it in Buf and return TRUE, otherwise return False.
         # Note: Failure to store the messages in the MCP into Buf in time may result in the MCP being unable to receive new messages.
@@ -226,11 +269,13 @@ class CAN:
             self._rx_buf.append(dat + tm)
         return True if (rx_flag & 0b11000000) else False
 
+
     def _spi_reset(self):
         # MCP2515_SPI instruction-reset
         self.cs.off()
         self.spi.write(b'\xc0')
         self.cs.on()
+
 
     def _spi_write_reg(self, addr, value):
         # MCP2515_SPI instruction-write register
@@ -239,6 +284,7 @@ class CAN:
         self.spi.write(addr)
         self.spi.write(value)
         self.cs.on()
+
 
     def _spi_read_reg(self, addr, num=1):
         # MCP2515_SPI instruction-read register
@@ -249,6 +295,7 @@ class CAN:
         self.cs.on()
         return buf
 
+
     def _spi_write_bit(self, addr, mask, value):
         # MCP2515_SPI instruction-bit modification
         self.cs.off()
@@ -258,6 +305,7 @@ class CAN:
         self.spi.write(value)
         self.cs.on()
 
+
     def _spi_ReadStatus(self):
         # MCP2515_SPI instruction-read status
         self.cs.off()
@@ -265,6 +313,7 @@ class CAN:
         buf = self.spi.read(1)
         self.cs.on()
         return buf
+
 
     def _spi_RecvMsg(self, select):
         # MCP2515_SPI instruction-read Rx buffer
@@ -277,6 +326,7 @@ class CAN:
             buf = self.spi.read(13)
         self.cs.on()
         return buf
+
 
     def _spi_send_msg(self, select):
         # MCP2515_SPI instruction-Request to send a message

@@ -46,3 +46,4 @@ Insert the USBtinyISP again.
 * [Short MCP CAN Arduino lib](https://github.com/autowp/arduino-mcp2515)
 * [MCP2515 instructions](https://www.nutsvolts.com/magazine/article/February2017_CAN-Bus-Add-Controller-to-MCU)
 * [Python Raspberry Pi SPI CAN](https://www.raspberrypi.org/forums/viewtopic.php?t=245788)
+* [Esp32 can driver #5310 (Pull request)](https://github.com/micropython/micropython/pull/5310)
